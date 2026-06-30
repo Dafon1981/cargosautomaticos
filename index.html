@@ -2,119 +2,257 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chat con la Base de Datos de Recepción</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Visor de Paquetes</title>
+    
+    <!-- Librerías necesarias -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.8"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f0f2f5; margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; }
-        .chat-container { width: 90%; max-width: 600px; height: 80vh; background: white; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.1 ); display: flex; flex-direction: column; }
-        #chat-window { flex-grow: 1; overflow-y: auto; padding: 20px; }
-        .message { margin-bottom: 15px; padding: 10px 15px; border-radius: 18px; max-width: 80%; line-height: 1.4; }
-        .user-message { background-color: #007bff; color: white; align-self: flex-end; margin-left: auto; }
-        .ia-message { background-color: #e9e9eb; color: #333; align-self: flex-start; }
-        .error-message { background-color: #ffebee; color: #c62828; border: 1px solid #c62828; }
-        #input-area { display: flex; padding: 15px; border-top: 1px solid #ddd; }
-        #user-input { flex-grow: 1; padding: 10px; border: 1px solid #ccc; border-radius: 20px; font-size: 16px; }
-        #send-button { background: #007bff; color: white; border: none; border-radius: 50%; width: 45px; height: 45px; margin-left: 10px; font-size: 20px; cursor: pointer; }
-        pre { background-color: #2d2d2d; color: #f8f8f2; padding: 10px; border-radius: 5px; white-space: pre-wrap; word-wrap: break-word; }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background-color: #121212; color: #ffffff; padding: 15px; }
+        
+        /* Pantalla de Búsqueda Manual */
+        #pantalla-busqueda { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 90vh; text-align: center; }
+        #pantalla-busqueda h1 { color: #f1c40f; margin-bottom: 20px; font-size: 24px; }
+        .input-busqueda { width: 100%; max-width: 300px; padding: 15px; border-radius: 8px; border: 2px solid #555; background: #1a1a1a; color: #fff; font-size: 18px; text-align: center; margin-bottom: 15px; outline: none; text-transform: uppercase; }
+        .input-busqueda:focus { border-color: #3498db; }
+        .btn-buscar { background: #3498db; color: white; border: none; padding: 15px 30px; border-radius: 8px; font-size: 18px; font-weight: bold; cursor: pointer; width: 100%; max-width: 300px; }
+        
+        /* Pantalla de Resultados */
+        #pantalla-resultados { display: none; flex-direction: column; height: 95vh; }
+        
+        .header-paquete { background: #1a1a1a; padding: 15px; border-radius: 10px; border-left: 5px solid #f1c40f; margin-bottom: 15px; }
+        .header-paquete h1 { color: #f1c40f; font-size: 26px; margin-bottom: 5px; }
+        .header-paquete h2 { color: #ccc; font-size: 14px; font-weight: normal; }
+        .header-paquete .badge { background: #3498db; color: white; padding: 3px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; margin-left: 10px; }
+
+        .buscador-registros { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #444; background: #222; color: #fff; font-size: 16px; margin-bottom: 15px; outline: none; }
+        .buscador-registros:focus { border-color: #f1c40f; }
+
+        /* Lista de Registros (Scrollable ) */
+        .lista-registros { flex-grow: 1; overflow-y: auto; background: #1a1a1a; border-radius: 10px; padding: 10px; margin-bottom: 15px; border: 1px solid #333; }
+        .registro-item { background: #252525; padding: 12px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid #2ecc71; }
+        .registro-item h4 { color: #fff; font-size: 16px; margin-bottom: 4px; }
+        .registro-item p { color: #aaa; font-size: 13px; margin-bottom: 2px; }
+        .registro-item .fecha { color: #3498db; font-weight: bold; }
+
+        /* Botones de Acción */
+        .botones-accion { display: flex; flex-direction: column; gap: 10px; }
+        .btn-accion { padding: 15px; border-radius: 8px; font-size: 16px; font-weight: bold; border: none; cursor: pointer; text-align: center; }
+        .btn-excel { background: #2ecc71; color: #000; }
+        .btn-pdf { background: #e74c3c; color: #fff; }
+        .btn-reset { background: #555; color: #fff; margin-top: 10px; }
+
+        /* Loader */
+        #loader { display: none; text-align: center; color: #f1c40f; font-weight: bold; margin-top: 20px; }
     </style>
 </head>
 <body>
 
-<div class="chat-container">
-    <div id="chat-window">
-        <div class="message ia-message">Hola, soy tu asistente de base de datos. ¿Qué información necesitas de la tabla de registros?</div>
+    <!-- PANTALLA 1: Búsqueda Manual (Si no hay QR) -->
+    <div id="pantalla-busqueda">
+        <h1>📦 Visor de Paquetes</h1>
+        <p style="color: #aaa; margin-bottom: 20px; font-size: 14px;">Escanea un QR o ingresa el código manualmente</p>
+        <input type="text" id="input-paquete" class="input-busqueda" placeholder="Ej: PQR000010">
+        <button class="btn-buscar" onclick="buscarPaqueteManual()">Buscar Paquete</button>
+        <div id="loader">Buscando en la base de datos...</div>
     </div>
-    <div id="input-area">
-        <input type="text" id="user-input" placeholder="Ej: busca al paciente Juan Perez...">
-        <button id="send-button">→</button>
+
+    <!-- PANTALLA 2: Resultados del Paquete -->
+    <div id="pantalla-resultados">
+        <div class="header-paquete">
+            <h1 id="titulo-paquete">CARGANDO...</h1>
+            <h2>Asignado a: <strong id="titulo-asignado" style="color: #fff;">-</strong> <span class="badge" id="badge-cantidad">0</span></h2>
+        </div>
+
+        <input type="text" id="buscador-filtro" class="buscador-registros" placeholder="🔍 Buscar FUA o Paciente..." onkeyup="filtrarRegistros()">
+
+        <div class="lista-registros" id="contenedor-lista">
+            <!-- Los registros se llenarán aquí -->
+        </div>
+
+        <div class="botones-accion">
+            <button class="btn-accion btn-excel" onclick="descargarExcelMovil()">📊 Descargar Excel (Cargo)</button>
+            <button class="btn-accion btn-pdf" onclick="descargarPdfMovil()">🖨️ Descargar PDF (Cinto)</button>
+            <button class="btn-accion btn-reset" onclick="volverABuscar()">🔍 Buscar otro paquete</button>
+        </div>
     </div>
-</div>
 
 <script>
-    // Tus claves de Supabase (¡estas son públicas y seguras de poner aquí!)
+    // Conexión a tu Supabase
     const supabaseUrl = 'https://esiklpxyectbekxvajnw.supabase.co';
     const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVzaWtscHh5ZWN0YmVreHZham53Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE2OTI1MjEsImV4cCI6MjA3NzI2ODUyMX0.mtQnqUrTmhmN1DQxOAUnGpizhYZobStHDH0cz_XfKGU';
     const supabase = window.supabase.createClient(supabaseUrl, supabaseKey );
 
-    const chatWindow = document.getElementById('chat-window');
-    const userInput = document.getElementById('user-input');
-    const sendButton = document.getElementById('send-button');
+    let registrosActuales = [];
+    let paqueteActual = "";
+    let responsableActual = "";
+    let fechaAuditoriaActual = "";
 
-    sendButton.addEventListener('click', handleUserMessage);
-    userInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-            handleUserMessage();
+    // Al cargar la página, revisar si viene un paquete por la URL (del QR)
+    document.addEventListener('DOMContentLoaded', () => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const paqueteUrl = urlParams.get('paquete');
+        
+        if (paqueteUrl) {
+            cargarDatosPaquete(paqueteUrl.toUpperCase());
         }
     });
 
-    function addMessage(text, type, isRawJson = false) {
-        const messageDiv = document.createElement('div');
-        messageDiv.classList.add('message', type);
-        if (isRawJson) {
-            messageDiv.innerHTML = `<pre>${text}</pre>`;
-        } else {
-            messageDiv.textContent = text;
-        }
-        chatWindow.appendChild(messageDiv);
-        chatWindow.scrollTop = chatWindow.scrollHeight;
+    function buscarPaqueteManual() {
+        const input = document.getElementById('input-paquete').value.trim().toUpperCase();
+        if (!input) return alert("Ingresa un número de paquete");
+        cargarDatosPaquete(input);
     }
 
-    async function handleUserMessage() {
-        const pregunta = userInput.value.trim();
-        if (!pregunta) return;
-
-        addMessage(pregunta, 'user-message');
-        userInput.value = '';
-        addMessage('Pensando...', 'ia-message', false);
-
+    async function cargarDatosPaquete(paquete) {
+        document.getElementById('loader').style.display = 'block';
+        
         try {
-            // 1. Llamar a la Edge Function para que la IA convierta la pregunta en un plan JSON
-            const { data: plan, error: planError } = await supabase.functions.invoke('chat-con-ia', {
-                body: { pregunta },
-            });
+            // Buscar en la tabla registros
+            const { data, error } = await supabase
+                .from('registros')
+                .select('*')
+                .eq('NomPaquete', paquete)
+                .order('FecAte', { ascending: true });
 
-            if (planError) throw planError;
-            if (plan.error) throw new Error(plan.error);
-            
-            // Mostramos el plan que generó la IA (muy útil para depurar)
-            document.querySelector('.ia-message:last-child').remove(); // Quita el "Pensando..."
-            addMessage('Plan de la IA:\n' + JSON.stringify(plan, null, 2), 'ia-message', true);
+            if (error) throw error;
 
-            // 2. Construir y ejecutar la consulta de Supabase basada en el plan de la IA
-            let query = supabase.from(plan.tabla).select(plan.columnas);
-
-            if (plan.filtros && plan.filtros.length > 0) {
-                plan.filtros.forEach(filtro => {
-                    query = query[filtro.operador](filtro.columna, filtro.valor);
-                });
-            }
-            
-            if (plan.accion === 'count') {
-                query = query.select('*', { count: 'exact', head: true });
+            if (!data || data.length === 0) {
+                document.getElementById('loader').style.display = 'none';
+                return alert(`No se encontraron registros para el paquete ${paquete}`);
             }
 
-            const { data: resultados, error: dbError, count } = await query;
+            // Guardar datos globalmente
+            registrosActuales = data;
+            paqueteActual = paquete;
+            responsableActual = data[0].Resp_Aud_Digi || "Sin asignar";
+            fechaAuditoriaActual = data[0].FechaAuditoria || new Date().toISOString().split('T')[0];
 
-            if (dbError) throw dbError;
+            // Llenar la cabecera
+            document.getElementById('titulo-paquete').innerText = paquete;
+            document.getElementById('titulo-asignado').innerText = responsableActual;
+            document.getElementById('badge-cantidad').innerText = data.length + " FUAs";
 
-            // 3. Mostrar los resultados al usuario
-            if (plan.accion === 'count') {
-                addMessage(`Respuesta: Se encontraron ${count} registros.`, 'ia-message');
-            } else if (resultados.length === 0) {
-                addMessage('No encontré resultados para tu consulta.', 'ia-message');
-            } else {
-                const respuestaFormateada = 'Resultados:\n' + JSON.stringify(resultados, null, 2);
-                addMessage(respuestaFormateada, 'ia-message', true);
-            }
+            // Llenar la lista
+            renderizarLista(data);
 
-        } catch (error) {
-            console.error('Error en el proceso:', error);
-            document.querySelector('.ia-message:last-child').remove(); // Quita el "Pensando..."
-            addMessage(`Error: ${error.message}`, 'error-message');
+            // Cambiar de pantalla
+            document.getElementById('pantalla-busqueda').style.display = 'none';
+            document.getElementById('pantalla-resultados').style.display = 'flex';
+
+        } catch (err) {
+            alert("Error al conectar con la base de datos: " + err.message);
+        } finally {
+            document.getElementById('loader').style.display = 'none';
         }
+    }
+
+    function renderizarLista(datos) {
+        const contenedor = document.getElementById('contenedor-lista');
+        contenedor.innerHTML = '';
+
+        if (datos.length === 0) {
+            contenedor.innerHTML = '<p style="text-align:center; color:#888; margin-top:20px;">No hay coincidencias</p>';
+            return;
+        }
+
+        datos.forEach((reg, index) => {
+            contenedor.innerHTML += `
+                <div class="registro-item">
+                    <h4>${index + 1}. FUA: ${reg.Nfua}</h4>
+                    <p>👤 ${reg.PACIENTE}</p>
+                    <p class="fecha">📅 Atención: ${reg.FecAte || 'Sin fecha'}</p>
+                </div>
+            `;
+        });
+    }
+
+    function filtrarRegistros() {
+        const texto = document.getElementById('buscador-filtro').value.toLowerCase();
+        const filtrados = registrosActuales.filter(reg => 
+            (reg.Nfua && reg.Nfua.toLowerCase().includes(texto)) || 
+            (reg.PACIENTE && reg.PACIENTE.toLowerCase().includes(texto))
+        );
+        renderizarLista(filtrados);
+    }
+
+    function volverABuscar() {
+        document.getElementById('pantalla-resultados').style.display = 'none';
+        document.getElementById('pantalla-busqueda').style.display = 'flex';
+        document.getElementById('input-paquete').value = '';
+        // Limpiar la URL para que no se quede pegado el paquete anterior
+        window.history.pushState({}, document.title, window.location.pathname);
+    }
+
+    // --- FUNCIONES DE DESCARGA (Adaptadas de tu app principal) ---
+
+    function descargarExcelMovil() {
+        const wsData = [];
+        
+        wsData.push([{ v: "CARGO DE ENTREGA DE FUAS", s: { font: { bold: true, sz: 14 }, alignment: { horizontal: "center" } } }]);
+        wsData.push([]);
+        wsData.push([{ v: "Paquete:", s: { font: { bold: true } } }, { v: paqueteActual }]);
+        wsData.push([{ v: "Recepcionista:", s: { font: { bold: true } } }, { v: "Manuel Andres Da'fonseca Irribarri" }]);
+        wsData.push([{ v: "Asignado a:", s: { font: { bold: true } } }, { v: responsableActual }]);
+        wsData.push([{ v: "Fecha Asignación:", s: { font: { bold: true } } }, { v: fechaAuditoriaActual }]);
+        wsData.push([]);
+
+        let headers = ["Nro", "FUA", "Paciente", "Fecha de Atención"];
+        const headerRow = headers.map(h => ({ v: h, s: { font: { bold: true, color: { rgb: "000000" } }, fill: { fgColor: { rgb: "D9D9D9" } }, alignment: { horizontal: "center" } } }));
+        wsData.push(headerRow);
+
+        registrosActuales.forEach((row, index) => {
+            wsData.push([
+                { v: index + 1 },
+                { v: row.Nfua },
+                { v: row.PACIENTE },
+                { v: row.FecAte }
+            ]);
+        });
+
+        const ws = XLSX.utils.aoa_to_sheet(wsData);
+        ws['!cols'] = [{ wch: 5 }, { wch: 15 }, { wch: 35 }, { wch: 18 }];
+        ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } }];
+
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Cargo");
+        XLSX.writeFile(wb, `Cargo_${paqueteActual}.xlsx`);
+    }
+
+    function descargarPdfMovil() {
+        const cantidad = registrosActuales.length;
+        let fechaFormateada = "";
+        if (fechaAuditoriaActual) {
+            const partes = fechaAuditoriaActual.split('-');
+            if (partes.length === 3) fechaFormateada = `${partes[2]} / ${partes[1]} / ${partes[0]}`;
+        }
+
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+        doc.setFont("helvetica", "bold");
+
+        // 1. PRIMERA LÍNEA VERTICAL (X: 15)
+        doc.setFontSize(14);
+        doc.text("FECHA AUDITORIA", 15, 40, { angle: -90 });
+        doc.text(fechaFormateada, 15, 100, { angle: -90 });
+        doc.setFontSize(18);
+        doc.text(`CANT: ${cantidad}`, 15, 240, { angle: -90 });
+
+        // 2. SEGUNDA LÍNEA VERTICAL (X: 30)
+        doc.setFontSize(14);
+        if (responsableActual) doc.text(responsableActual, 30, 120, { angle: -90 });
+        doc.text("Auditor / Digitador", 30, 240, { angle: -90 });
+
+        // 3. TERCERA LÍNEA VERTICAL (X: 60)
+        doc.setFontSize(60);
+        doc.text(paqueteActual, 60, 60, { angle: -90 });
+
+        doc.save(`Cinto_${paqueteActual}.pdf`);
     }
 </script>
-
 </body>
 </html>
