@@ -9,6 +9,8 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.8"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- Nueva librería para crear tablas en el PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
 
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
@@ -32,12 +34,15 @@
         .buscador-registros { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #444; background: #222; color: #fff; font-size: 16px; margin-bottom: 15px; outline: none; }
         .buscador-registros:focus { border-color: #f1c40f; }
 
-        /* Lista de Registros (Scrollable ) */
-        .lista-registros { flex-grow: 1; overflow-y: auto; background: #1a1a1a; border-radius: 10px; padding: 10px; margin-bottom: 15px; border: 1px solid #333; }
-        .registro-item { background: #252525; padding: 12px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid #2ecc71; }
-        .registro-item h4 { color: #fff; font-size: 16px; margin-bottom: 4px; }
-        .registro-item p { color: #aaa; font-size: 13px; margin-bottom: 2px; }
-        .registro-item .fecha { color: #3498db; font-weight: bold; }
+        /* Tabla de Registros (Estilo Excel ) */
+        .tabla-contenedor { flex-grow: 1; overflow-y: auto; background: #1a1a1a; border-radius: 10px; margin-bottom: 15px; border: 1px solid #333; }
+        table { width: 100%; border-collapse: collapse; text-align: left; }
+        th { background: #333; color: #f1c40f; padding: 12px; position: sticky; top: 0; z-index: 1; font-size: 14px; border-bottom: 2px solid #555; }
+        td { padding: 10px 12px; border-bottom: 1px solid #444; color: #ddd; font-size: 13px; }
+        tr:hover { background: #2a2a2a; }
+        .col-nro { width: 40px; text-align: center; font-weight: bold; color: #888; }
+        .col-fua { font-weight: bold; color: #fff; }
+        .col-fecha { color: #3498db; white-space: nowrap; }
 
         /* Botones de Acción */
         .botones-accion { display: flex; flex-direction: column; gap: 10px; }
@@ -52,7 +57,7 @@
 </head>
 <body>
 
-    <!-- PANTALLA 1: Búsqueda Manual (Si no hay QR) -->
+    <!-- PANTALLA 1: Búsqueda Manual -->
     <div id="pantalla-busqueda">
         <h1>📦 Visor de Paquetes</h1>
         <p style="color: #aaa; margin-bottom: 20px; font-size: 14px;">Escanea un QR o ingresa el código manualmente</p>
@@ -70,13 +75,26 @@
 
         <input type="text" id="buscador-filtro" class="buscador-registros" placeholder="🔍 Buscar FUA o Paciente..." onkeyup="filtrarRegistros()">
 
-        <div class="lista-registros" id="contenedor-lista">
-            <!-- Los registros se llenarán aquí -->
+        <!-- NUEVO DISEÑO: Tabla estilo Excel -->
+        <div class="tabla-contenedor">
+            <table id="tabla-registros">
+                <thead>
+                    <tr>
+                        <th class="col-nro">Nro</th>
+                        <th>FUA</th>
+                        <th>Paciente</th>
+                        <th>Fecha Atención</th>
+                    </tr>
+                </thead>
+                <tbody id="contenedor-lista">
+                    <!-- Los registros se llenarán aquí -->
+                </tbody>
+            </table>
         </div>
 
         <div class="botones-accion">
             <button class="btn-accion btn-excel" onclick="descargarExcelMovil()">📊 Descargar Excel (Cargo)</button>
-            <button class="btn-accion btn-pdf" onclick="descargarPdfMovil()">🖨️ Descargar PDF (Cinto)</button>
+            <button class="btn-accion btn-pdf" onclick="descargarPdfMovil()">🖨️ Descargar PDF (Cargo)</button>
             <button class="btn-accion btn-reset" onclick="volverABuscar()">🔍 Buscar otro paquete</button>
         </div>
     </div>
@@ -92,7 +110,6 @@
     let responsableActual = "";
     let fechaAuditoriaActual = "";
 
-    // Al cargar la página, revisar si viene un paquete por la URL (del QR)
     document.addEventListener('DOMContentLoaded', () => {
         const urlParams = new URLSearchParams(window.location.search);
         const paqueteUrl = urlParams.get('paquete');
@@ -112,7 +129,6 @@
         document.getElementById('loader').style.display = 'block';
         
         try {
-            // Buscar en la tabla registros
             const { data, error } = await supabase
                 .from('registros')
                 .select('*')
@@ -126,21 +142,17 @@
                 return alert(`No se encontraron registros para el paquete ${paquete}`);
             }
 
-            // Guardar datos globalmente
             registrosActuales = data;
             paqueteActual = paquete;
             responsableActual = data[0].Resp_Aud_Digi || "Sin asignar";
             fechaAuditoriaActual = data[0].FechaAuditoria || new Date().toISOString().split('T')[0];
 
-            // Llenar la cabecera
             document.getElementById('titulo-paquete').innerText = paquete;
             document.getElementById('titulo-asignado').innerText = responsableActual;
             document.getElementById('badge-cantidad').innerText = data.length + " FUAs";
 
-            // Llenar la lista
             renderizarLista(data);
 
-            // Cambiar de pantalla
             document.getElementById('pantalla-busqueda').style.display = 'none';
             document.getElementById('pantalla-resultados').style.display = 'flex';
 
@@ -151,22 +163,24 @@
         }
     }
 
+    // NUEVA FUNCIÓN: Renderiza filas de tabla en lugar de tarjetas
     function renderizarLista(datos) {
         const contenedor = document.getElementById('contenedor-lista');
         contenedor.innerHTML = '';
 
         if (datos.length === 0) {
-            contenedor.innerHTML = '<p style="text-align:center; color:#888; margin-top:20px;">No hay coincidencias</p>';
+            contenedor.innerHTML = '<tr><td colspan="4" style="text-align:center; color:#888; padding:20px;">No hay coincidencias</td></tr>';
             return;
         }
 
         datos.forEach((reg, index) => {
             contenedor.innerHTML += `
-                <div class="registro-item">
-                    <h4>${index + 1}. FUA: ${reg.Nfua}</h4>
-                    <p>👤 ${reg.PACIENTE}</p>
-                    <p class="fecha">📅 Atención: ${reg.FecAte || 'Sin fecha'}</p>
-                </div>
+                <tr>
+                    <td class="col-nro">${index + 1}</td>
+                    <td class="col-fua">${reg.Nfua || ''}</td>
+                    <td>${reg.PACIENTE || ''}</td>
+                    <td class="col-fecha">${reg.FecAte || ''}</td>
+                </tr>
             `;
         });
     }
@@ -184,12 +198,10 @@
         document.getElementById('pantalla-resultados').style.display = 'none';
         document.getElementById('pantalla-busqueda').style.display = 'flex';
         document.getElementById('input-paquete').value = '';
-        // Limpiar la URL para que no se quede pegado el paquete anterior
         window.history.pushState({}, document.title, window.location.pathname);
     }
 
-    // --- FUNCIONES DE DESCARGA (Adaptadas de tu app principal) ---
-
+    // --- DESCARGA EXCEL (Intacta) ---
     function descargarExcelMovil() {
         const wsData = [];
         
@@ -223,35 +235,55 @@
         XLSX.writeFile(wb, `Cargo_${paqueteActual}.xlsx`);
     }
 
+    // --- NUEVA DESCARGA PDF (Cargo en formato Tabla) ---
     function descargarPdfMovil() {
-        const cantidad = registrosActuales.length;
-        let fechaFormateada = "";
-        if (fechaAuditoriaActual) {
-            const partes = fechaAuditoriaActual.split('-');
-            if (partes.length === 3) fechaFormateada = `${partes[2]} / ${partes[1]} / ${partes[0]}`;
-        }
-
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+        
+        // Título principal
+        doc.setFontSize(14);
         doc.setFont("helvetica", "bold");
-
-        // 1. PRIMERA LÍNEA VERTICAL (X: 15)
-        doc.setFontSize(14);
-        doc.text("FECHA AUDITORIA", 15, 40, { angle: -90 });
-        doc.text(fechaFormateada, 15, 100, { angle: -90 });
-        doc.setFontSize(18);
-        doc.text(`CANT: ${cantidad}`, 15, 240, { angle: -90 });
-
-        // 2. SEGUNDA LÍNEA VERTICAL (X: 30)
-        doc.setFontSize(14);
-        if (responsableActual) doc.text(responsableActual, 30, 120, { angle: -90 });
-        doc.text("Auditor / Digitador", 30, 240, { angle: -90 });
-
-        // 3. TERCERA LÍNEA VERTICAL (X: 60)
-        doc.setFontSize(60);
-        doc.text(paqueteActual, 60, 60, { angle: -90 });
-
-        doc.save(`Cinto_${paqueteActual}.pdf`);
+        doc.text("CARGO DE ENTREGA DE FUAS", 105, 15, { align: "center" });
+        
+        // Datos de cabecera
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "normal");
+        doc.text(`Paquete: ${paqueteActual}`, 14, 25);
+        doc.text(`Recepcionista: Manuel Andres Da'fonseca Irribarri`, 14, 31);
+        doc.text(`Asignado a: ${responsableActual}`, 14, 37);
+        doc.text(`Fecha Asignación: ${fechaAuditoriaActual}`, 14, 43);
+        
+        // Preparar datos para la tabla
+        const tableColumn = ["Nro", "FUA", "Paciente", "Fecha de Atención"];
+        const tableRows = [];
+        
+        registrosActuales.forEach((row, index) => {
+            const rowData = [
+                index + 1,
+                row.Nfua || '',
+                row.PACIENTE || '',
+                row.FecAte || ''
+            ];
+            tableRows.push(rowData);
+        });
+        
+        // Generar tabla en el PDF usando autotable
+        doc.autoTable({
+            startY: 50,
+            head: [tableColumn],
+            body: tableRows,
+            theme: 'grid',
+            headStyles: { fillColor: [79, 129, 189], textColor: 255, fontStyle: 'bold', halign: 'center' },
+            columnStyles: {
+                0: { halign: 'center', cellWidth: 15 },
+                1: { cellWidth: 35 },
+                2: { cellWidth: 'auto' },
+                3: { cellWidth: 35, halign: 'center' }
+            },
+            styles: { fontSize: 9 }
+        });
+        
+        doc.save(`Cargo_${paqueteActual}.pdf`);
     }
 </script>
 </body>
